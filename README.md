@@ -2,7 +2,7 @@
 
 ```mermaid
 flowchart TD
-    services[(Services)]
+    services([Services])
     otel-collector[OpenTelemetry Collector]
     kafka[Kafka]
     timescale-exporter[Timescale Exporter]
