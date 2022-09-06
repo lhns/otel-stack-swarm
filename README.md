@@ -4,7 +4,7 @@
 flowchart TD
     services([Services])
     otel-collector[OpenTelemetry Collector]
-    kafka[Kafka]
+    kafka[(Kafka)]
     timescale-exporter[Timescale Exporter]
     promscale[Promscale]
     timescaledb[(TimescaleDB)]
