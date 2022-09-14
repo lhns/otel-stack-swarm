@@ -3,6 +3,8 @@ version: '3.8'
 services:
   opentelemetry-collector:
     image: ${DOCKER_PROXY:-}otel/opentelemetry-collector-contrib
+    environment:
+      TZ: 'Europe/Berlin'
     volumes:
       - ${DATA_PATH}/otel/otel-collector.yaml:/etc/otelcol-contrib/config.yaml
     ports:
@@ -32,6 +34,7 @@ services:
     image: ${DOCKER_PROXY:-}bitnami/kafka:3.1.1
     stop_grace_period: 300s
     environment:
+      TZ: 'Europe/Berlin'
       KAFKA_ENABLE_KRAFT: 'yes'
       KAFKA_CFG_PROCESS_ROLES: 'broker,controller'
       KAFKA_CFG_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
@@ -76,8 +79,6 @@ services:
         fluentd-async: 'true'
         fluentd-max-retries: '5'
         fluentd-sub-second-precision: 'true'
-    deploy:
-      replicas: 1
   promscale:
     image: ${DOCKER_PROXY:-}timescale/promscale:latest
     command:
@@ -87,6 +88,12 @@ services:
       - -db.user=postgres
       - -db.password=timescaledb
       - -db.name=postgres
+      - -web.enable-admin-api
+      - -metrics.rules.config-file=/config/metrics-rules.yml
+    environment:
+      TZ: 'Europe/Berlin'
+    volumes:
+      - ${DATA_PATH}/promscale:/config
     ports:
       - "9201:9201"
     networks:
@@ -98,8 +105,13 @@ services:
         fluentd-async: 'true'
         fluentd-max-retries: '5'
         fluentd-sub-second-precision: 'true'
+    deploy:
+      update_config:
+        order: start-first
   timescale-exporter:
     image: ${DOCKER_PROXY:-}otel/opentelemetry-collector-contrib
+    environment:
+      TZ: 'Europe/Berlin'
     volumes:
       - ${DATA_PATH}/otel/timescale-exporter.yaml:/etc/otelcol-contrib/config.yaml
     networks:
@@ -116,6 +128,8 @@ services:
   loki:
     image: ${DOCKER_PROXY:-}grafana/loki:2.6.0
     command: -config.file=/loki/config.yaml
+    environment:
+      TZ: 'Europe/Berlin'
     volumes:
       - ${DATA_PATH}/loki:/loki
     ports:
@@ -131,8 +145,59 @@ services:
         fluentd-sub-second-precision: 'true'
   loki-exporter:
     image: ${DOCKER_PROXY:-}otel/opentelemetry-collector-contrib
+    environment:
+      TZ: 'Europe/Berlin'
     volumes:
       - ${DATA_PATH}/otel/loki-exporter.yaml:/etc/otelcol-contrib/config.yaml
+    networks:
+      - internal
+    logging:
+      driver: "fluentd"
+      options:
+        fluentd-address: "127.0.0.1:8006"
+        fluentd-async: 'true'
+        fluentd-max-retries: '5'
+        fluentd-sub-second-precision: 'true'
+  grafana-ruler-proxy:
+    image: ${DOCKER_PROXY:-}ghcr.io/lhns/grafana-ruler-proxy
+    environment:
+      TZ: 'Europe/Berlin'
+      CONFIG: |
+        {
+          "prometheus": {
+            "url": "http://promscale:9201",
+            "rulePath": "/promscale/rules.yml",
+            "internalRulePath": "/config/rules.yml"
+          },
+          "alertmanager": {
+            "url": "http://alertmanager:9093",
+            "configPath": "/alertmanager/alertmanager.yml"
+          }
+        }
+    volumes:
+      - ${DATA_PATH}/promscale:/promscale
+      - ${DATA_PATH}/alertmanager/config:/alertmanager
+    networks:
+      - internal
+    logging:
+      driver: "fluentd"
+      options:
+        fluentd-address: "127.0.0.1:8006"
+        fluentd-async: 'true'
+        fluentd-max-retries: '5'
+        fluentd-sub-second-precision: 'true'
+    deploy:
+      update_config:
+        order: start-first
+  alertmanager:
+    image: ${DOCKER_PROXY:-}prom/alertmanager
+    environment:
+      TZ: 'Europe/Berlin'
+    ports:
+      - "9093:9093"
+    volumes:
+      - ${DATA_PATH}/alertmanager/data:/alertmanager
+      - ${DATA_PATH}/alertmanager/config:/etc/alertmanager
     networks:
       - internal
     logging:
