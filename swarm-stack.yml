@@ -79,6 +79,8 @@ services:
         fluentd-async: 'true'
         fluentd-max-retries: '5'
         fluentd-sub-second-precision: 'true'
+    deploy:
+      replicas: 1
   promscale:
     image: ${DOCKER_PROXY:-}timescale/promscale:latest
     command:
