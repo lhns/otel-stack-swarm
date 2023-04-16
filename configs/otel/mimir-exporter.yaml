@@ -1,0 +1,61 @@
+extensions:
+  health_check:
+
+receivers:
+  prometheus/feedback:
+    config:
+      scrape_configs:
+      # Collect own metrics
+        - job_name: 'mimir-exporter'
+          scrape_interval: 10s
+          static_configs:
+            - targets: ['127.0.0.1:8888']
+
+  kafka/metrics:
+    protocol_version: 2.1.0
+    brokers:
+      - kafka:9092
+    topic: otlp_metrics
+    group_id: mimir-exporter
+    message_marking:
+      after: true
+      on_error: true
+
+  kafka/meta_metrics:
+    protocol_version: 2.1.0
+    brokers:
+      - kafka:9092
+    topic: otlp_meta_metrics
+    group_id: mimir-exporter
+    message_marking:
+      after: true
+      on_error: true
+
+processors:
+  batch/prometheusremotewrite:
+    timeout: 1s
+
+exporters:
+  otlp/feedback:
+    endpoint: opentelemetry-collector:4317
+    tls:
+      insecure: true
+
+  otlphttp/mimir:
+    endpoint: http://mimir:9009/otlp
+    sending_queue:
+      enabled: false
+    retry_on_failure:
+      enabled: false
+
+service:
+  extensions: [health_check]
+  pipelines:
+    metrics/feedback:
+      receivers: [prometheus/feedback]
+      processors: []
+      exporters: [otlp/feedback]
+    metrics:
+      receivers: [kafka/meta_metrics, kafka/metrics]
+      processors: []
+      exporters: [otlphttp/mimir]

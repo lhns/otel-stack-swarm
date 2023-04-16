@@ -1,0 +1,63 @@
+extensions:
+  health_check:
+
+receivers:
+  prometheus/feedback:
+    config:
+      scrape_configs:
+      # Collect own metrics
+        - job_name: 'loki-exporter'
+          scrape_interval: 10s
+          static_configs:
+            - targets: ['127.0.0.1:8888']
+        - job_name: 'loki'
+          scrape_interval: 10s
+          static_configs:
+            - targets: ['loki:3100']
+
+  kafka/logs:
+    protocol_version: 2.1.0
+    brokers:
+      - kafka:9092
+    topic: otlp_logs
+    group_id: loki-exporter
+    message_marking:
+      after: true
+      on_error: false
+
+processors:
+  batch:
+
+exporters:
+  otlp/feedback:
+    endpoint: opentelemetry-collector:4317
+    tls:
+      insecure: true
+
+  loki:
+    endpoint: "http://loki:3100/loki/api/v1/push"
+    tls:
+      insecure: true
+    tenant_id: "fake"
+    labels:
+      resource:
+      attributes:
+        container_id: ""
+        container_name: ""
+        log.file.name: "filename"
+      record:
+        traceID: "traceid"
+        spanID: "spanid"
+    format: json
+
+service:
+  extensions: [health_check]
+  pipelines:
+    metrics/feedback:
+      receivers: [prometheus/feedback]
+      processors: [batch]
+      exporters: [otlp/feedback]
+    logs:
+      receivers: [kafka/logs]
+      processors: []
+      exporters: [loki]
