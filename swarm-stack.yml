@@ -46,7 +46,7 @@ services:
       ALLOW_PLAINTEXT_LISTENER: 'yes'
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'false'
     volumes:
-      - ${DATA_PATH}/otel/kafka:/bitnami/kafka
+      - ${DATA_PATH}/kafka:/bitnami/kafka
     ports:
       - "9092:9092"
     networks:
