@@ -89,6 +89,39 @@ services:
         fluentd-async: 'true'
         fluentd-max-retries: '5'
         fluentd-sub-second-precision: 'true'
+  mimir:
+    image: ${DOCKER_PROXY:-}grafana/mimir
+    command: --config.file=/etc/mimir/config.yaml
+    volumes:
+      - ${DATA_PATH}/mimir/config:/etc/mimir
+      - ${DATA_PATH}/mimir/tsdb:/tsdb
+    ports:
+      - "9009:9009"
+    networks:
+      - internal
+      - web
+    logging:
+      driver: "fluentd"
+      options:
+        fluentd-address: "127.0.0.1:8006"
+        fluentd-async: 'true'
+        fluentd-max-retries: '5'
+        fluentd-sub-second-precision: 'true'
+  mimir-exporter:
+    image: ${DOCKER_PROXY:-}otel/opentelemetry-collector-contrib
+    environment:
+      TZ: 'Europe/Berlin'
+    volumes:
+      - ${DATA_PATH}/otel/mimir-exporter.yaml:/etc/otelcol-contrib/config.yaml
+    networks:
+      - internal
+    logging:
+      driver: "fluentd"
+      options:
+        fluentd-address: "127.0.0.1:8006"
+        fluentd-async: 'true'
+        fluentd-max-retries: '5'
+        fluentd-sub-second-precision: 'true'
   alertmanager:
     image: ${DOCKER_PROXY:-}prom/alertmanager
     environment:
