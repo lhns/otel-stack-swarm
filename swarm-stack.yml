@@ -122,6 +122,23 @@ services:
         fluentd-async: 'true'
         fluentd-max-retries: '5'
         fluentd-sub-second-precision: 'true'
+  minio:
+    image: ${DOCKER_PROXY:-}minio/minio
+    command: server --address 0.0.0.0:9000 /data
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - ${DATA_PATH}/minio:/data
+    networks:
+      - internal
+    logging:
+      driver: "fluentd"
+      options:
+        fluentd-address: "127.0.0.1:8006"
+        fluentd-async: 'true'
+        fluentd-max-retries: '5'
+        fluentd-sub-second-precision: 'true'
   alertmanager:
     image: ${DOCKER_PROXY:-}prom/alertmanager
     environment:
