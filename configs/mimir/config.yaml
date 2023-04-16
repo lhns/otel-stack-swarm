@@ -1,0 +1,46 @@
+multitenancy_enabled: false
+
+common:
+  storage:
+    backend: s3
+    s3:
+      endpoint: minio:9000
+      access_key_id: minioadmin
+      secret_access_key: minioadmin
+      insecure: true
+      bucket_name: mimir
+
+limits:
+  out_of_order_time_window: 7d
+  max_label_names_per_series: 64
+  max_global_series_per_user: 500000
+  ingestion_rate: 100000
+
+blocks_storage:
+  storage_prefix: blocks
+
+compactor:
+  sharding_ring:
+    kvstore:
+      store: memberlist
+
+distributor:
+  ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: memberlist
+
+ingester:
+  ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: memberlist
+    replication_factor: 1
+
+server:
+  http_listen_port: 9009
+  log_level: info
+
+store_gateway:
+  sharding_ring:
+    replication_factor: 1

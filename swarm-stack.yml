@@ -31,7 +31,7 @@ services:
       update_config:
         order: start-first
   kafka:
-    image: ${DOCKER_PROXY:-}bitnami/kafka:3.1.1
+    image: ${DOCKER_PROXY:-}bitnami/kafka:3.4
     stop_grace_period: 300s
     environment:
       TZ: 'Europe/Berlin'
@@ -40,7 +40,7 @@ services:
       KAFKA_CFG_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
       KAFKA_CFG_LISTENERS: 'PLAINTEXT://:9092,CONTROLLER://:9093'
       KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT'
-      KAFKA_CFG_ADVERTISED_LISTENERS: 'PLAINTEXT://kafka:9092'
+      KAFKA_CFG_ADVERTISED_LISTENERS: 'PLAINTEXT://10.1.2.10:9092'
       KAFKA_BROKER_ID: '1'
       KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: '1@127.0.0.1:9093'
       ALLOW_PLAINTEXT_LISTENER: 'yes'
@@ -56,79 +56,8 @@ services:
       options:
         max-file: 5
         max-size: 10m
-  timescaledb:
-    image: ${DOCKER_PROXY:-}timescale/timescaledb-ha:pg14-latest
-    stop_grace_period: 300s
-    command: -c 'max_connections=200'
-    environment:
-      POSTGRES_PASSWORD: timescaledb
-    volumes:
-      - ${DATA_PATH}/timescaledb:/home/postgres/pgdata
-    ports:
-      - "6399:5432"
-    networks:
-      - internal
-    sysctls:
-      - net.ipv4.tcp_keepalive_time=600
-      - net.ipv4.tcp_keepalive_intvl=60
-      - net.ipv4.tcp_keepalive_probes=60
-    logging:
-      driver: "fluentd"
-      options:
-        fluentd-address: "127.0.0.1:8006"
-        fluentd-async: 'true'
-        fluentd-max-retries: '5'
-        fluentd-sub-second-precision: 'true'
-    deploy:
-      replicas: 1
-  promscale:
-    image: ${DOCKER_PROXY:-}timescale/promscale:latest
-    command:
-      - -db.ssl-mode=disable
-      - -db.host=timescaledb
-      - -db.port=5432
-      - -db.user=postgres
-      - -db.password=timescaledb
-      - -db.name=postgres
-      - -web.enable-admin-api
-      - -metrics.rules.config-file=/config/metrics-rules.yml
-    environment:
-      TZ: 'Europe/Berlin'
-    volumes:
-      - ${DATA_PATH}/promscale:/config
-    ports:
-      - "9201:9201"
-    networks:
-      - internal
-    logging:
-      driver: "fluentd"
-      options:
-        fluentd-address: "127.0.0.1:8006"
-        fluentd-async: 'true'
-        fluentd-max-retries: '5'
-        fluentd-sub-second-precision: 'true'
-    deploy:
-      update_config:
-        order: start-first
-  timescale-exporter:
-    image: ${DOCKER_PROXY:-}otel/opentelemetry-collector-contrib
-    environment:
-      TZ: 'Europe/Berlin'
-    volumes:
-      - ${DATA_PATH}/otel/timescale-exporter.yaml:/etc/otelcol-contrib/config.yaml
-    networks:
-      - internal
-    logging:
-      driver: "fluentd"
-      options:
-        fluentd-address: "127.0.0.1:8006"
-        fluentd-async: 'true'
-        fluentd-max-retries: '5'
-        fluentd-sub-second-precision: 'true'
-    deploy:
-      replicas: 1
   loki:
-    image: ${DOCKER_PROXY:-}grafana/loki:2.6.0
+    image: ${DOCKER_PROXY:-}grafana/loki
     command: -config.file=/loki/config.yaml
     environment:
       TZ: 'Europe/Berlin'
@@ -160,37 +89,6 @@ services:
         fluentd-async: 'true'
         fluentd-max-retries: '5'
         fluentd-sub-second-precision: 'true'
-  grafana-ruler-proxy:
-    image: ${DOCKER_PROXY:-}ghcr.io/lhns/grafana-ruler-proxy
-    environment:
-      TZ: 'Europe/Berlin'
-      CONFIG: |
-        {
-          "prometheus": {
-            "url": "http://promscale:9201",
-            "rulePath": "/promscale/rules.yml",
-            "internalRulePath": "/config/rules.yml"
-          },
-          "alertmanager": {
-            "url": "http://alertmanager:9093",
-            "configPath": "/alertmanager/alertmanager.yml"
-          }
-        }
-    volumes:
-      - ${DATA_PATH}/promscale:/promscale
-      - ${DATA_PATH}/alertmanager/config:/alertmanager
-    networks:
-      - internal
-    logging:
-      driver: "fluentd"
-      options:
-        fluentd-address: "127.0.0.1:8006"
-        fluentd-async: 'true'
-        fluentd-max-retries: '5'
-        fluentd-sub-second-precision: 'true'
-    deploy:
-      update_config:
-        order: start-first
   alertmanager:
     image: ${DOCKER_PROXY:-}prom/alertmanager
     environment:

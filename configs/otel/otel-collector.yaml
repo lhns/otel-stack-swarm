@@ -1,0 +1,125 @@
+extensions:
+  health_check:
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+      http:
+
+  carbon:
+    endpoint: 0.0.0.0:2003
+
+  fluentforward:
+    endpoint: 0.0.0.0:8006
+
+  influxdb:
+
+  jaeger:
+    protocols:
+      grpc:
+      thrift_binary:
+      thrift_compact:
+      thrift_http:
+
+  opencensus:
+
+  syslog:
+    tcp:
+      listen_address: "0.0.0.0:54526"
+    udp:
+      listen_address: "0.0.0.0:54526"
+    protocol: rfc5424
+
+  zipkin:
+
+  prometheus/feedback:
+    config:
+      scrape_configs:
+      # Collect own metrics
+        - job_name: 'otel-collector'
+          scrape_interval: 10s
+          static_configs:
+            - targets: ['127.0.0.1:8888']
+
+  kafkametrics/otel-kafka:
+    protocol_version: 2.1.0
+    scrapers:
+      - brokers
+      - topics
+      - consumers
+    brokers:
+      - kafka:9092
+    collection_interval: 10s
+
+processors:
+  batch/kafka:
+    send_batch_size: 2048
+    send_batch_max_size: 2048
+
+  attributes/otel-kafka:
+    actions:
+      - key: cluster_name
+        value: otel-kafka
+        action: insert
+
+exporters:
+  kafka/traces:
+    protocol_version: 2.1.0
+    brokers:
+      - kafka:9092
+    topic: otlp_spans
+    producer:
+      max_message_bytes: 8000000
+      compression: zstd
+
+  kafka/metrics:
+    protocol_version: 2.1.0
+    brokers:
+      - kafka:9092
+    topic: otlp_metrics
+    producer:
+      max_message_bytes: 8000000
+      compression: zstd
+
+  kafka/meta_metrics:
+    protocol_version: 2.1.0
+    brokers:
+      - kafka:9092
+    topic: otlp_meta_metrics
+    producer:
+      max_message_bytes: 8000000
+      compression: zstd
+
+  kafka/logs:
+    protocol_version: 2.1.0
+    brokers:
+      - kafka:9092
+    topic: otlp_logs
+    producer:
+      max_message_bytes: 8000000
+      compression: zstd
+
+service:
+  extensions: [health_check]
+  pipelines:
+    traces/kafka:
+      receivers: [otlp, jaeger, opencensus, zipkin]
+      processors: [batch/kafka]
+      exporters: [kafka/traces]
+    metrics/kafka:
+      receivers: [otlp, carbon, influxdb, opencensus]
+      processors: [batch/kafka]
+      exporters: [kafka/metrics]
+    metrics/feedback:
+      receivers: [prometheus/feedback]
+      processors: [batch/kafka]
+      exporters: [kafka/meta_metrics]
+    metrics/otel-kafka:
+      receivers: [kafkametrics/otel-kafka]
+      processors: [attributes/otel-kafka, batch/kafka]
+      exporters: [kafka/meta_metrics]
+    logs/kafka:
+      receivers: [otlp, fluentforward, syslog]
+      processors: [batch/kafka]
+      exporters: [kafka/logs]
