@@ -66,6 +66,16 @@ docker stack deploy \
     monitoring
 ```
 
+## Helm (Kubernetes)
+
+A single Helm chart implementation is available at `helm/otel-stack`.
+
+```bash
+cd helm/otel-stack
+helm dependency update
+helm upgrade --install otel-stack . --namespace monitoring --create-namespace
+```
+
 ## Kafka Topics
 
 Use `kafka-create-topics.sh` to create:

@@ -1,0 +1,86 @@
+{{- if .Values.optionalComponents.kafkaCli.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kafka-cli
+  labels:
+    {{- include "otel-stack.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: kafka-cli
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: kafka-cli
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: kafka-cli
+          image: {{ .Values.optionalComponents.kafkaCli.image.repository }}:{{ .Values.optionalComponents.kafkaCli.image.tag }}
+          imagePullPolicy: {{ .Values.optionalComponents.kafkaCli.image.pullPolicy }}
+          command: ["tail", "-f", "/dev/null"]
+{{- end }}
+{{- if .Values.optionalComponents.grafanaRulerProxy.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-ruler-proxy
+  labels:
+    {{- include "otel-stack.labels" . | nindent 4 }}
+data:
+  config.json: |
+    {
+      "alertmanager": {
+        "url": "http://alertmanager:9093",
+        "configPath": "/alertmanager/alertmanager.yml"
+      },
+      "debug": false
+    }
+  alertmanager.yml: |
+{{ toYaml .Values.alertmanager.config | indent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana-ruler-proxy
+  labels:
+    {{- include "otel-stack.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: grafana-ruler-proxy
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: grafana-ruler-proxy
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: grafana-ruler-proxy
+          image: {{ .Values.optionalComponents.grafanaRulerProxy.image.repository }}:{{ .Values.optionalComponents.grafanaRulerProxy.image.tag }}
+          imagePullPolicy: {{ .Values.optionalComponents.grafanaRulerProxy.image.pullPolicy }}
+          env:
+            - name: TZ
+              value: {{ .Values.global.timezone | quote }}
+            - name: CONFIG
+              valueFrom:
+                configMapKeyRef:
+                  name: grafana-ruler-proxy
+                  key: config.json
+          volumeMounts:
+            - name: alertmanager-config
+              mountPath: /alertmanager
+      volumes:
+        - name: alertmanager-config
+          configMap:
+            name: grafana-ruler-proxy
+            items:
+              - key: alertmanager.yml
+                path: alertmanager.yml
+{{- end }}

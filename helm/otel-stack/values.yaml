@@ -1,0 +1,251 @@
+nameOverride: ""
+fullnameOverride: ""
+
+global:
+  timezone: Europe/Berlin
+  ingressClassName: traefik
+
+hosts:
+  grafana: grafana.local
+  alertmanager: alertmanager.local
+  victorialogs: victorialogs.local
+  victoriametrics: victoriametrics.local
+  victoriatraces: victoriatraces.local
+
+ingress:
+  enabled: true
+  annotations: {}
+  tls: []
+
+services:
+  kafka:
+    name: kafka
+  grafana:
+    name: grafana
+    port: 80
+  alertmanager:
+    name: alertmanager
+    port: 9093
+  victorialogs:
+    name: victorialogs-server
+    port: 9428
+  victoriametrics:
+    name: victoriametrics-server
+    port: 8428
+  victoriatraces:
+    name: victoriatraces-server
+    port: 10428
+
+backendEndpoints:
+  victorialogsLogs: http://victorialogs-server:9428/insert/opentelemetry/v1/logs
+  victoriametricsMetrics: http://victoriametrics-server:8428/opentelemetry/api/v1/push
+  victoriatracesTraces: http://victoriatraces-server:10428/insert/opentelemetry/v1/traces
+
+otel:
+  image:
+    repository: otel/opentelemetry-collector-contrib
+    tag: 0.147.0
+    pullPolicy: IfNotPresent
+
+  kafka:
+    bootstrapServers: kafka:9092
+
+  ingest:
+    name: opentelemetry-collector
+    command:
+      - --config=/etc/otelcol-contrib/config.yaml
+      - --feature-gates=transform.flatten.logs
+    service:
+      type: ClusterIP
+      annotations: {}
+    ports:
+      carbon: 2003
+      otlpGrpc: 4317
+      otlpHttp: 4318
+      fluentForward: 8006
+      influxdb: 8086
+      health: 13133
+      jaegerGrpc: 14250
+      jaegerThriftHttp: 14268
+      jaegerThriftCompact: 6831
+      jaegerThriftBinary: 6832
+      syslog: 54526
+
+  traceProcessor:
+    name: trace-processor
+
+  exporters:
+    victorialogs:
+      enabled: true
+      name: victorialogs-exporter
+    victoriametrics:
+      enabled: true
+      name: victoriametrics-exporter
+    victoriatraces:
+      enabled: true
+      name: victoriatraces-exporter
+    victoriametricsRecovery:
+      enabled: false
+      name: victoriametrics-recovery-exporter
+
+optionalComponents:
+  kafkaCli:
+    enabled: false
+    image:
+      repository: apache/kafka
+      tag: "latest"
+      pullPolicy: IfNotPresent
+
+  grafanaRulerProxy:
+    enabled: false
+    image:
+      repository: ghcr.io/lhns/grafana-ruler-proxy
+      tag: b3d85285
+      pullPolicy: IfNotPresent
+
+kafka:
+  enabled: true
+  image:
+    repository: soldevelo/kafka
+    tag: "4.0"
+    pullPolicy: IfNotPresent
+  terminationGracePeriodSeconds: 300
+  service:
+    port: 9092
+  persistence:
+    enabled: true
+    size: 20Gi
+    storageClassName: ""
+  resources: {}
+  extraEnvVars:
+    - name: TZ
+      value: "Europe/Berlin"
+    - name: KAFKA_CFG_NODE_ID
+      value: "1"
+    - name: KAFKA_CFG_PROCESS_ROLES
+      value: "broker,controller"
+    - name: KAFKA_CFG_LISTENERS
+      value: "PLAINTEXT://:9092,CONTROLLER://:9093"
+    - name: KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP
+      value: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT"
+    - name: KAFKA_CFG_CONTROLLER_LISTENER_NAMES
+      value: "CONTROLLER"
+    - name: KAFKA_CFG_INTER_BROKER_LISTENER_NAME
+      value: "PLAINTEXT"
+    - name: KAFKA_CFG_ADVERTISED_LISTENERS
+      value: "PLAINTEXT://kafka:9092"
+    - name: KAFKA_CFG_CONTROLLER_QUORUM_VOTERS
+      value: "1@127.0.0.1:9093"
+    - name: KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE
+      value: "false"
+    - name: ALLOW_PLAINTEXT_LISTENER
+      value: "yes"
+  provisioning:
+    enabled: true
+    topics:
+      - name: otlp_metrics
+        config:
+          retention.ms: "-1"
+          retention.bytes: "20000000000"
+      - name: otlp_meta_metrics
+        config:
+          retention.ms: "-1"
+          retention.bytes: "5000000000"
+      - name: otlp_spans
+        config:
+          retention.ms: "-1"
+          retention.bytes: "5000000000"
+      - name: otlp_logs
+        config:
+          retention.ms: "-1"
+          retention.bytes: "20000000000"
+
+victorialogs:
+  enabled: true
+  nameOverride: victorialogs
+  server:
+    fullnameOverride: victorialogs
+    retentionPeriod: 2
+    extraArgs:
+      defaultMsgValue: ""
+    persistentVolume:
+      enabled: true
+      size: 20Gi
+    ingress:
+      enabled: false
+
+victoriametrics:
+  enabled: true
+  nameOverride: victoriametrics
+  server:
+    fullnameOverride: victoriametrics
+    retentionPeriod: 12
+    extraArgs:
+      maxLabelsPerTimeseries: "50"
+      search.cacheTimestampOffset: 15m
+      maxLabelValueLen: "8192"
+    persistentVolume:
+      enabled: true
+      size: 20Gi
+    ingress:
+      enabled: false
+
+victoriatraces:
+  enabled: true
+  nameOverride: victoriatraces
+  server:
+    fullnameOverride: victoriatraces
+    retentionPeriod: 2
+    persistentVolume:
+      enabled: true
+      size: 20Gi
+    ingress:
+      enabled: false
+
+grafana:
+  enabled: true
+  fullnameOverride: grafana
+  ingress:
+    enabled: false
+  persistence:
+    enabled: true
+    size: 10Gi
+  plugins:
+    - victoriametrics-metrics-datasource
+    - victoriametrics-logs-datasource
+  env:
+    GF_SERVER_ROOT_URL: http://localhost:3001
+    GF_AUTH_TOKEN_ROTATION_INTERVAL_MINUTES: "600"
+  datasources:
+    datasources.yaml:
+      apiVersion: 1
+      datasources:
+        - name: VictoriaMetrics
+          type: prometheus
+          access: proxy
+          isDefault: true
+          url: http://victoriametrics-server:8428
+        - name: VictoriaLogs
+          type: victoriametrics-logs-datasource
+          access: proxy
+          url: http://victorialogs-server:9428
+
+alertmanager:
+  enabled: true
+  fullnameOverride: alertmanager
+  ingress:
+    enabled: false
+  persistence:
+    enabled: true
+    size: 10Gi
+  extraArgs:
+    web.external-url: http://alertmanager:9093
+    cluster.listen-address: ""
+  config:
+    route:
+      receiver: default
+      group_wait: 10s
+      group_interval: 1m
+      repeat_interval: 3h
+    receivers:
+      - name: default

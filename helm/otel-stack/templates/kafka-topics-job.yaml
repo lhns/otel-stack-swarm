@@ -1,0 +1,36 @@
+{{- if and .Values.kafka.enabled .Values.kafka.provisioning.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "otel-stack.fullname" . }}-kafka-topics
+  labels:
+    {{- include "otel-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: kafka-topics
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 6
+  template:
+    metadata:
+      labels:
+        {{- include "otel-stack.labels" . | nindent 8 }}
+        app.kubernetes.io/component: kafka-topics
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: kafka-topics
+          image: {{ .Values.kafka.image.repository }}:{{ .Values.kafka.image.tag }}
+          imagePullPolicy: {{ .Values.kafka.image.pullPolicy }}
+          command:
+            - /bin/bash
+            - -ec
+            - |
+              until kafka-topics.sh --bootstrap-server {{ .Values.otel.kafka.bootstrapServers }} --list >/dev/null 2>&1; do
+                echo "waiting for kafka at {{ .Values.otel.kafka.bootstrapServers }}"
+                sleep 5
+              done
+{{- range .Values.kafka.provisioning.topics }}
+              kafka-topics.sh --bootstrap-server {{ $.Values.otel.kafka.bootstrapServers }} --create --if-not-exists --topic {{ .name }}{{- range $key, $value := .config }} --config {{ $key }}={{ $value }}{{- end }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,31 @@
+apiVersion: v2
+name: otel-stack
+description: One-chart Kubernetes deployment for the OTel + Kafka + Victoria observability stack.
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+kubeVersion: ">=1.26.0"
+dependencies:
+  - name: victoria-logs-single
+    repository: https://victoriametrics.github.io/helm-charts
+    version: "0.11.28"
+    alias: victorialogs
+    condition: victorialogs.enabled
+  - name: victoria-metrics-single
+    repository: https://victoriametrics.github.io/helm-charts
+    version: "0.32.0"
+    alias: victoriametrics
+    condition: victoriametrics.enabled
+  - name: victoria-traces-single
+    repository: https://victoriametrics.github.io/helm-charts
+    version: "0.0.6"
+    alias: victoriatraces
+    condition: victoriatraces.enabled
+  - name: grafana
+    repository: https://grafana.github.io/helm-charts
+    version: "10.5.15"
+    condition: grafana.enabled
+  - name: alertmanager
+    repository: https://prometheus-community.github.io/helm-charts
+    version: "1.33.1"
+    condition: alertmanager.enabled
