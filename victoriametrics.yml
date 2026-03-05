@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  victoriametrics:
+    image: ${DOCKER_PROXY:-}victoriametrics/victoria-metrics:v1.137.0
+    command:
+      - -retentionPeriod=12
+      - -maxLabelsPerTimeseries=50
+      - -search.cacheTimestampOffset=15m
+      - -maxLabelValueLen=8192
+    volumes:
+      - ${DATA_PATH}/victoriametrics:/victoria-metrics-data
+    ports:
+      - "8428:8428"
+    networks:
+      - internal
+      - web
+
+  victoriametrics-exporter:
+    image: ${DOCKER_PROXY:-}otel/opentelemetry-collector-contrib:0.147.0
+    environment:
+      TZ: 'Europe/Berlin'
+    volumes:
+      - ${DATA_PATH}/otel/victoriametrics-exporter.yaml:/etc/otelcol-contrib/config.yaml
+    networks:
+      - internal
+      - web
+
+  victoriametrics-recovery-exporter:
+    image: ${DOCKER_PROXY:-}otel/opentelemetry-collector-contrib:0.147.0
+    environment:
+      TZ: 'Europe/Berlin'
+    volumes:
+      - ${DATA_PATH}/otel/victoriametrics-recovery-exporter.yaml:/etc/otelcol-contrib/config.yaml
+    networks:
+      - internal
+      - web
+    deploy:
+      replicas: 0
+
+networks:
+  internal:
+    driver: overlay
+  web:
+    external: true
+    name: traefik_web

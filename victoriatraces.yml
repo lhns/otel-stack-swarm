@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  victoriatraces:
+    image: ${DOCKER_PROXY:-}victoriametrics/victoria-traces:v0.7.1
+    command:
+      - -retentionPeriod=2
+    volumes:
+      - ${DATA_PATH}/victoriatraces:/victoria-traces-data
+    networks:
+      - internal
+      - web
+
+  victoriatraces-exporter:
+    image: ${DOCKER_PROXY:-}otel/opentelemetry-collector-contrib:0.147.0
+    environment:
+      TZ: 'Europe/Berlin'
+    volumes:
+      - ${DATA_PATH}/otel/victoriatraces-exporter.yaml:/etc/otelcol-contrib/config.yaml
+    networks:
+      - internal
+      - web
+
+networks:
+  internal:
+    driver: overlay
+  web:
+    external: true
+    name: traefik_web

@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  grafana:
+    image: ${DOCKER_PROXY:-}grafana/grafana:12.4.0
+    environment:
+      GF_SERVER_ROOT_URL: ${GF_SERVER_ROOT_URL:-http://localhost:3001}
+      GF_AUTH_TOKEN_ROTATION_INTERVAL_MINUTES: '600'
+      GF_INSTALL_PLUGINS: 'victoriametrics-metrics-datasource,victoriametrics-logs-datasource'
+    ports:
+      - "3001:3000"
+    volumes:
+      - ${DATA_PATH}/grafana/data:/var/lib/grafana
+      - ${DATA_PATH}/grafana/config:/etc/grafana
+    networks:
+      - db
+      - web
+    deploy:
+      update_config:
+        order: start-first
+      labels:
+        traefik.enable: 'true'
+        traefik.http.routers.grafana.entrypoints: 'websecure'
+        traefik.http.routers.grafana.rule: Host(`${GRAFANA_HOST:-grafana.local}`)
+        traefik.http.services.grafana.loadbalancer.server.port: '3000'
+        traefik.http.services.grafana.loadbalancer.server.scheme: 'http'
+
+  db:
+    image: ${DOCKER_PROXY:-}pgautoupgrade/pgautoupgrade:18-trixie
+    environment:
+      TZ: 'Europe/Berlin'
+      POSTGRES_PASSWORD: ${GRAFANA_DB_PASSWORD:-pw}
+    ports:
+      - "5436:5432"
+    networks:
+      - db
+    volumes:
+      - ${DATA_PATH}/grafana/db:/var/lib/postgresql
+
+networks:
+  db:
+    driver: overlay
+  web:
+    external: true
+    name: traefik_web

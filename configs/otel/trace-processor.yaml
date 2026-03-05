@@ -1,0 +1,83 @@
+extensions:
+  health_check:
+
+receivers:
+  prometheus/feedback:
+    config:
+      scrape_configs:
+        - job_name: 'trace-processor'
+          scrape_interval: 10s
+          static_configs:
+            - targets: ['127.0.0.1:8888']
+
+  kafka/traces:
+    protocol_version: 2.1.0
+    brokers:
+      - kafka:9092
+    traces:
+      topic: otlp_spans
+    group_id: trace-processor
+    message_marking:
+      after: true
+      on_error: false
+
+connectors:
+  spanmetrics:
+    dimensions:
+      - name: code.function
+      - name: code.namespace
+      - name: http.method
+      - name: files.count
+      - name: server.address
+    exclude_dimensions: []
+    dimensions_cache_size: 1000
+    aggregation_temporality: AGGREGATION_TEMPORALITY_CUMULATIVE
+    metrics_flush_interval: 15s
+    exemplars:
+      enabled: true
+
+  servicegraph:
+    latency_histogram_buckets: [1, 2, 3, 4, 5]
+    dimensions:
+      - dimension-1
+      - dimension-2
+    store:
+      ttl: 1s
+      max_items: 10
+
+processors:
+  batch/kafka-metrics:
+    send_batch_size: 1536
+    send_batch_max_size: 1536
+
+exporters:
+  otlp/feedback:
+    endpoint: opentelemetry-collector:4317
+    tls:
+      insecure: true
+
+  kafka/metrics:
+    protocol_version: 2.1.0
+    brokers:
+      - kafka:9092
+    metrics:
+      topic: otlp_metrics
+    producer:
+      max_message_bytes: 8000000
+      compression: zstd
+
+service:
+  extensions: [health_check]
+  pipelines:
+    metrics/feedback:
+      receivers: [prometheus/feedback]
+      processors: []
+      exporters: [otlp/feedback]
+    traces:
+      receivers: [kafka/traces]
+      processors: []
+      exporters: [spanmetrics, servicegraph]
+    metrics:
+      receivers: [spanmetrics, servicegraph]
+      processors: [batch/kafka-metrics]
+      exporters: [kafka/metrics]

@@ -5,28 +5,22 @@ receivers:
   prometheus/feedback:
     config:
       scrape_configs:
-      # Collect own metrics
-        - job_name: 'loki-exporter'
+        - job_name: 'victorialogs-exporter'
           scrape_interval: 10s
           static_configs:
             - targets: ['127.0.0.1:8888']
-        - job_name: 'loki'
-          scrape_interval: 10s
-          static_configs:
-            - targets: ['loki:3100']
 
   kafka/logs:
     protocol_version: 2.1.0
     brokers:
       - kafka:9092
-    topic: otlp_logs
-    group_id: loki-exporter
+    logs:
+      topics:
+        - otlp_logs
+    group_id: victorialogs-exporter
     message_marking:
       after: true
       on_error: false
-
-processors:
-  batch:
 
 exporters:
   otlp/feedback:
@@ -34,30 +28,26 @@ exporters:
     tls:
       insecure: true
 
-  loki:
-    endpoint: "http://loki:3100/loki/api/v1/push"
-    tls:
-      insecure: true
-    tenant_id: "fake"
-    labels:
-      resource:
-      attributes:
-        container_id: ""
-        container_name: ""
-        log.file.name: "filename"
-      record:
-        traceID: "traceid"
-        spanID: "spanid"
-    format: json
+  otlphttp/victorialogs:
+    logs_endpoint: http://victorialogs:9428/insert/opentelemetry/v1/logs
+    sending_queue:
+      enabled: true
+      queue_size: 10000
+      num_consumers: 10
+    retry_on_failure:
+      enabled: true
+      initial_interval: 1s
+      max_interval: 30s
+      max_elapsed_time: 0s
 
 service:
   extensions: [health_check]
   pipelines:
     metrics/feedback:
       receivers: [prometheus/feedback]
-      processors: [batch]
+      processors: []
       exporters: [otlp/feedback]
     logs:
       receivers: [kafka/logs]
       processors: []
-      exporters: [loki]
+      exporters: [otlphttp/victorialogs]

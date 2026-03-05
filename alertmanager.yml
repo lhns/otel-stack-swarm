@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  alertmanager:
+    image: ${DOCKER_PROXY:-}prom/alertmanager
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+      - --web.external-url=${ALERTMANAGER_EXTERNAL_URL:-http://alertmanager:9093}
+      - --cluster.listen-address=
+    volumes:
+      - ${DATA_PATH}/alertmanager/data:/alertmanager
+      - ${DATA_PATH}/alertmanager/config:/etc/alertmanager
+    networks:
+      - internal
+      - web
+    environment:
+      TZ: 'Europe/Berlin'
+    deploy:
+      labels:
+        traefik.enable: 'true'
+        traefik.http.routers.alertmanager.entrypoints: 'web,websecure'
+        traefik.http.routers.alertmanager.rule: Host(`${ALERTMANAGER_HOST:-alertmanager.local}`)
+        traefik.http.services.alertmanager.loadbalancer.server.port: '9093'
+        traefik.http.services.alertmanager.loadbalancer.server.scheme: 'http'
+
+  grafana-ruler-proxy:
+    image: ${DOCKER_PROXY:-}ghcr.io/lhns/grafana-ruler-proxy:b3d85285
+    environment:
+      TZ: 'Europe/Berlin'
+      CONFIG: |
+        {
+          "alertmanager": {
+            "url": "http://alertmanager:9093",
+            "configPath": "/alertmanager/alertmanager.yml"
+          },
+          "debug": false
+        }
+    volumes:
+      - ${DATA_PATH}/alertmanager/config:/alertmanager
+    networks:
+      - internal
+      - web
+    deploy:
+      replicas: 0
+
+networks:
+  internal:
+    driver: overlay
+  web:
+    external: true
+    name: traefik_web

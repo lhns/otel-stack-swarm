@@ -5,8 +5,7 @@ receivers:
   prometheus/feedback:
     config:
       scrape_configs:
-      # Collect own metrics
-        - job_name: 'mimir-exporter'
+        - job_name: 'victoriametrics-exporter'
           scrape_interval: 10s
           static_configs:
             - targets: ['127.0.0.1:8888']
@@ -15,25 +14,25 @@ receivers:
     protocol_version: 2.1.0
     brokers:
       - kafka:9092
-    topic: otlp_metrics
-    group_id: mimir-exporter
+    metrics:
+      topics:
+        - otlp_metrics
+    group_id: victoriametrics-exporter
     message_marking:
       after: true
-      on_error: true
+      on_error: false
 
   kafka/meta_metrics:
     protocol_version: 2.1.0
     brokers:
       - kafka:9092
-    topic: otlp_meta_metrics
-    group_id: mimir-exporter
+    metrics:
+      topics:
+        - otlp_meta_metrics
+    group_id: victoriametrics-exporter
     message_marking:
       after: true
-      on_error: true
-
-processors:
-  batch/prometheusremotewrite:
-    timeout: 1s
+      on_error: false
 
 exporters:
   otlp/feedback:
@@ -41,12 +40,17 @@ exporters:
     tls:
       insecure: true
 
-  otlphttp/mimir:
-    endpoint: http://mimir:9009/otlp
+  otlphttp/victoriametrics:
+    metrics_endpoint: http://victoriametrics:8428/opentelemetry/api/v1/push
     sending_queue:
-      enabled: false
+      enabled: true
+      queue_size: 10000
+      num_consumers: 10
     retry_on_failure:
-      enabled: false
+      enabled: true
+      initial_interval: 1s
+      max_interval: 30s
+      max_elapsed_time: 0s
 
 service:
   extensions: [health_check]
@@ -58,4 +62,4 @@ service:
     metrics:
       receivers: [kafka/meta_metrics, kafka/metrics]
       processors: []
-      exporters: [otlphttp/mimir]
+      exporters: [otlphttp/victoriametrics]

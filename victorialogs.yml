@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  victorialogs:
+    image: ${DOCKER_PROXY:-}victoriametrics/victoria-logs:v1.47.0
+    command:
+      - -retentionPeriod=2
+      - -defaultMsgValue=
+    volumes:
+      - ${DATA_PATH}/victorialogs:/victoria-logs-data
+    networks:
+      - internal
+      - web
+    ports:
+      - "9428:9428"
+
+  victorialogs-exporter:
+    image: ${DOCKER_PROXY:-}otel/opentelemetry-collector-contrib:0.147.0
+    environment:
+      TZ: 'Europe/Berlin'
+    volumes:
+      - ${DATA_PATH}/otel/victorialogs-exporter.yaml:/etc/otelcol-contrib/config.yaml
+    networks:
+      - internal
+      - web
+
+networks:
+  internal:
+    driver: overlay
+  web:
+    external: true
+    name: traefik_web

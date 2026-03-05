@@ -5,7 +5,9 @@ receivers:
   otlp:
     protocols:
       grpc:
+        endpoint: 0.0.0.0:4317
       http:
+        endpoint: 0.0.0.0:4318
 
   carbon:
     endpoint: 0.0.0.0:2003
@@ -14,15 +16,18 @@ receivers:
     endpoint: 0.0.0.0:8006
 
   influxdb:
+    endpoint: 0.0.0.0:8086
 
   jaeger:
     protocols:
       grpc:
+        endpoint: 0.0.0.0:14250
       thrift_binary:
+        endpoint: 0.0.0.0:6832
       thrift_compact:
+        endpoint: 0.0.0.0:6831
       thrift_http:
-
-  opencensus:
+        endpoint: 0.0.0.0:14268
 
   syslog:
     tcp:
@@ -31,12 +36,9 @@ receivers:
       listen_address: "0.0.0.0:54526"
     protocol: rfc5424
 
-  zipkin:
-
   prometheus/feedback:
     config:
       scrape_configs:
-      # Collect own metrics
         - job_name: 'otel-collector'
           scrape_interval: 10s
           static_configs:
@@ -53,9 +55,34 @@ receivers:
     collection_interval: 10s
 
 processors:
+  deltatocumulative:
+
   batch/kafka:
     send_batch_size: 2048
     send_batch_max_size: 2048
+
+  batch/kafka-logs:
+    send_batch_size: 256
+    send_batch_max_size: 256
+
+  transform/docker-logs-resource-attributes:
+    error_mode: silent
+    flatten_data: true
+    log_statements:
+      - context: log
+        statements:
+          - set(resource.attributes["container.id"], log.attributes["container_id"])
+          - delete_key(log.attributes, "container_id")
+          - set(resource.attributes["container.name"], log.attributes["container_name"])
+          - delete_key(log.attributes, "container_name")
+      - context: log
+        conditions:
+          - resource.attributes["container.name"] != nil
+        statements:
+          - set(resource.attributes["service.namespace"], "container")
+          - set(resource.attributes["service.instance.id"], resource.attributes["container.name"])
+          - set(resource.attributes["service.name"], resource.attributes["container.name"])
+          - replace_pattern(resource.attributes["service.name"], "^/(.*)\\.[^.]+\\.[^.]+", "$$1")
 
   attributes/otel-kafka:
     actions:
@@ -63,12 +90,53 @@ processors:
         value: otel-kafka
         action: insert
 
+  deltatorate/count:
+    metrics:
+      - trace.span.count
+      - trace.span.event.count
+      - metric.count
+      - metric.data_point.count
+      - log.record.count
+
+  transform/count:
+    error_mode: ignore
+    metric_statements:
+      - context: datapoint
+        statements:
+          - keep_keys(resource.attributes, ["service.name", "tenant.id", "host.name"])
+          - set(resource.attributes["metric.name"], metric.name)
+          - keep_keys(datapoint.attributes, [])
+
+  interval/count:
+    interval: 10s
+
+connectors:
+  forward/traces:
+  forward/metrics:
+  forward/meta_metrics:
+  forward/logs:
+  forward/count_traces:
+  forward/count_metrics:
+  forward/count_logs:
+  count:
+    spans:
+      trace.span.count:
+    spanevents:
+      trace.span.event.count:
+    metrics:
+      metric.count:
+    datapoints:
+      metric.data_point.count:
+    logs:
+      log.record.count:
+
 exporters:
   kafka/traces:
     protocol_version: 2.1.0
     brokers:
       - kafka:9092
     topic: otlp_spans
+    timeout: 30s
     producer:
       max_message_bytes: 8000000
       compression: zstd
@@ -78,6 +146,7 @@ exporters:
     brokers:
       - kafka:9092
     topic: otlp_metrics
+    timeout: 30s
     producer:
       max_message_bytes: 8000000
       compression: zstd
@@ -87,6 +156,7 @@ exporters:
     brokers:
       - kafka:9092
     topic: otlp_meta_metrics
+    timeout: 30s
     producer:
       max_message_bytes: 8000000
       compression: zstd
@@ -103,23 +173,55 @@ exporters:
 service:
   extensions: [health_check]
   pipelines:
-    traces/kafka:
-      receivers: [otlp, jaeger, opencensus, zipkin]
-      processors: [batch/kafka]
-      exporters: [kafka/traces]
-    metrics/kafka:
-      receivers: [otlp, carbon, influxdb, opencensus]
-      processors: [batch/kafka]
-      exporters: [kafka/metrics]
-    metrics/feedback:
+    traces/receive:
+      receivers: [otlp, jaeger]
+      exporters: [forward/traces]
+    metrics/receive:
+      receivers: [otlp, carbon, influxdb]
+      exporters: [forward/metrics]
+    metrics/meta:
       receivers: [prometheus/feedback]
-      processors: [batch/kafka]
-      exporters: [kafka/meta_metrics]
-    metrics/otel-kafka:
+      exporters: [forward/meta_metrics]
+    traces/count_traces:
+      receivers: [forward/count_traces]
+      processors: [transform/count]
+      exporters: [count]
+    metrics/count_metrics:
+      receivers: [forward/count_metrics]
+      processors: [transform/count]
+      exporters: [count]
+    logs/count_logs:
+      receivers: [forward/count_logs]
+      processors: [transform/count]
+      exporters: [count]
+    metrics/count:
+      receivers: [count]
+      processors: [deltatocumulative, interval/count]
+      exporters: [forward/meta_metrics]
+    metrics/meta-kafka:
       receivers: [kafkametrics/otel-kafka]
-      processors: [attributes/otel-kafka, batch/kafka]
+      processors: [attributes/otel-kafka]
+      exporters: [forward/meta_metrics]
+    logs/receive:
+      receivers: [otlp, syslog]
+      exporters: [forward/logs]
+    logs/receive-fluentforward:
+      receivers: [fluentforward]
+      processors: [transform/docker-logs-resource-attributes]
+      exporters: [forward/logs]
+    traces/kafka:
+      receivers: [forward/traces]
+      processors: [batch/kafka]
+      exporters: [kafka/traces, forward/count_traces]
+    metrics/kafka:
+      receivers: [forward/metrics]
+      processors: [batch/kafka]
+      exporters: [kafka/metrics, forward/count_metrics]
+    metrics/kafka-meta:
+      receivers: [forward/meta_metrics]
+      processors: [batch/kafka]
       exporters: [kafka/meta_metrics]
     logs/kafka:
-      receivers: [otlp, fluentforward, syslog]
-      processors: [batch/kafka]
-      exporters: [kafka/logs]
+      receivers: [forward/logs]
+      processors: [batch/kafka-logs]
+      exporters: [kafka/logs, forward/count_logs]
