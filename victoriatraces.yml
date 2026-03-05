@@ -4,12 +4,19 @@ services:
   victoriatraces:
     image: ${DOCKER_PROXY:-}victoriametrics/victoria-traces:v0.7.1
     command:
-      - -retentionPeriod=2
+      - -retentionPeriod=2 # months
     volumes:
       - ${DATA_PATH}/victoriatraces:/victoria-traces-data
     networks:
       - internal
       - web
+    deploy:
+      labels:
+        traefik.enable: 'true'
+        traefik.http.routers.victoriatraces.entrypoints: 'websecure'
+        traefik.http.routers.victoriatraces.rule: Host(`${VICTORIATRACES_HOST:-victoriatraces.local}`)
+        traefik.http.services.victoriatraces.loadbalancer.server.port: '10428'
+        traefik.http.services.victoriatraces.loadbalancer.server.scheme: 'http'
 
   victoriatraces-exporter:
     image: ${DOCKER_PROXY:-}otel/opentelemetry-collector-contrib:0.147.0

@@ -4,15 +4,20 @@ services:
   victorialogs:
     image: ${DOCKER_PROXY:-}victoriametrics/victoria-logs:v1.47.0
     command:
-      - -retentionPeriod=2
+      - -retentionPeriod=2 # months
       - -defaultMsgValue=
     volumes:
       - ${DATA_PATH}/victorialogs:/victoria-logs-data
     networks:
       - internal
       - web
-    ports:
-      - "9428:9428"
+    deploy:
+      labels:
+        traefik.enable: 'true'
+        traefik.http.routers.victorialogs.entrypoints: 'websecure'
+        traefik.http.routers.victorialogs.rule: Host(`${VICTORIALOGS_HOST:-victorialogs.local}`)
+        traefik.http.services.victorialogs.loadbalancer.server.port: '9428'
+        traefik.http.services.victorialogs.loadbalancer.server.scheme: 'http'
 
   victorialogs-exporter:
     image: ${DOCKER_PROXY:-}otel/opentelemetry-collector-contrib:0.147.0

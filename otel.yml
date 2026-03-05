@@ -22,7 +22,6 @@ services:
     networks:
       - internal
       - web
-      - web-internal
     deploy:
       update_config:
         order: start-first
@@ -75,6 +74,3 @@ networks:
   web:
     external: true
     name: traefik_web
-  web-internal:
-    external: true
-    name: traefik_web-internal

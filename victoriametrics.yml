@@ -4,17 +4,22 @@ services:
   victoriametrics:
     image: ${DOCKER_PROXY:-}victoriametrics/victoria-metrics:v1.137.0
     command:
-      - -retentionPeriod=12
+      - -retentionPeriod=12 # months
       - -maxLabelsPerTimeseries=50
       - -search.cacheTimestampOffset=15m
       - -maxLabelValueLen=8192
     volumes:
       - ${DATA_PATH}/victoriametrics:/victoria-metrics-data
-    ports:
-      - "8428:8428"
     networks:
       - internal
       - web
+    deploy:
+      labels:
+        traefik.enable: 'true'
+        traefik.http.routers.victoriametrics.entrypoints: 'websecure'
+        traefik.http.routers.victoriametrics.rule: Host(`${VICTORIAMETRICS_HOST:-victoriametrics.local}`)
+        traefik.http.services.victoriametrics.loadbalancer.server.port: '8428'
+        traefik.http.services.victoriametrics.loadbalancer.server.scheme: 'http'
 
   victoriametrics-exporter:
     image: ${DOCKER_PROXY:-}otel/opentelemetry-collector-contrib:0.147.0
