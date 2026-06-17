@@ -1,0 +1,61 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.otel.ingest.name }}
+  labels:
+    {{- include "otel-stack.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+{{ tpl (.Files.Get "files/otel/otel-collector.yaml") . | indent 4 }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.otel.traceProcessor.name }}
+  labels:
+    {{- include "otel-stack.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+{{ tpl (.Files.Get "files/otel/trace-processor.yaml") . | indent 4 }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.otel.exporters.victorialogs.name }}
+  labels:
+    {{- include "otel-stack.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+{{ tpl (.Files.Get "files/otel/victorialogs-exporter.yaml") . | indent 4 }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.otel.exporters.victoriametrics.name }}
+  labels:
+    {{- include "otel-stack.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+{{ tpl (.Files.Get "files/otel/victoriametrics-exporter.yaml") . | indent 4 }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.otel.exporters.victoriatraces.name }}
+  labels:
+    {{- include "otel-stack.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+{{ tpl (.Files.Get "files/otel/victoriatraces-exporter.yaml") . | indent 4 }}
+{{- if .Values.otel.exporters.victoriametricsRecovery.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.otel.exporters.victoriametricsRecovery.name }}
+  labels:
+    {{- include "otel-stack.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+{{ tpl (.Files.Get "files/otel/victoriametrics-recovery-exporter.yaml") . | indent 4 }}
+{{- end }}

@@ -1,0 +1,65 @@
+extensions:
+  health_check:
+
+receivers:
+  prometheus/feedback:
+    config:
+      scrape_configs:
+        - job_name: 'victoriametrics-recovery-exporter'
+          scrape_interval: 10s
+          static_configs:
+            - targets: ['127.0.0.1:8888']
+
+  kafka/metrics:
+    protocol_version: 2.1.0
+    brokers:
+      - {{ .Values.otel.kafka.bootstrapServers }}
+    metrics:
+      topics:
+        - otlp_metrics
+    group_id: victoriametrics-recovery-exporter
+    message_marking:
+      after: true
+      on_error: false
+
+  kafka/meta_metrics:
+    protocol_version: 2.1.0
+    brokers:
+      - {{ .Values.otel.kafka.bootstrapServers }}
+    metrics:
+      topics:
+        - otlp_meta_metrics
+    group_id: victoriametrics-recovery-exporter
+    message_marking:
+      after: true
+      on_error: false
+
+exporters:
+  otlp/feedback:
+    endpoint: {{ .Values.otel.ingest.name }}:{{ .Values.otel.ingest.ports.otlpGrpc }}
+    tls:
+      insecure: true
+
+  otlphttp/victoriametrics:
+    metrics_endpoint: {{ .Values.backendEndpoints.victoriametricsMetrics }}
+    sending_queue:
+      enabled: true
+      queue_size: 10000
+      num_consumers: 10
+    retry_on_failure:
+      enabled: true
+      initial_interval: 1s
+      max_interval: 30s
+      max_elapsed_time: 0s
+
+service:
+  extensions: [health_check]
+  pipelines:
+    metrics/feedback:
+      receivers: [prometheus/feedback]
+      processors: []
+      exporters: [otlp/feedback]
+    metrics:
+      receivers: [kafka/meta_metrics, kafka/metrics]
+      processors: []
+      exporters: [otlphttp/victoriametrics]

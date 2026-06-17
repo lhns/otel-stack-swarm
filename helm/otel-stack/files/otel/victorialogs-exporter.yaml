@@ -1,0 +1,53 @@
+extensions:
+  health_check:
+
+receivers:
+  prometheus/feedback:
+    config:
+      scrape_configs:
+        - job_name: 'victorialogs-exporter'
+          scrape_interval: 10s
+          static_configs:
+            - targets: ['127.0.0.1:8888']
+
+  kafka/logs:
+    protocol_version: 2.1.0
+    brokers:
+      - {{ .Values.otel.kafka.bootstrapServers }}
+    logs:
+      topics:
+        - otlp_logs
+    group_id: victorialogs-exporter
+    message_marking:
+      after: true
+      on_error: false
+
+exporters:
+  otlp/feedback:
+    endpoint: {{ .Values.otel.ingest.name }}:{{ .Values.otel.ingest.ports.otlpGrpc }}
+    tls:
+      insecure: true
+
+  otlphttp/victorialogs:
+    logs_endpoint: {{ .Values.backendEndpoints.victorialogsLogs }}
+    sending_queue:
+      enabled: true
+      queue_size: 10000
+      num_consumers: 10
+    retry_on_failure:
+      enabled: true
+      initial_interval: 1s
+      max_interval: 30s
+      max_elapsed_time: 0s
+
+service:
+  extensions: [health_check]
+  pipelines:
+    metrics/feedback:
+      receivers: [prometheus/feedback]
+      processors: []
+      exporters: [otlp/feedback]
+    logs:
+      receivers: [kafka/logs]
+      processors: []
+      exporters: [otlphttp/victorialogs]

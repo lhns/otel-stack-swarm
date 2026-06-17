@@ -1,0 +1,325 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.otel.ingest.name }}
+  labels:
+    {{- include "otel-stack.labels" . | nindent 4 }}
+  {{- with .Values.otel.ingest.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.otel.ingest.service.type }}
+  selector:
+    app.kubernetes.io/component: otel-ingest
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  ports:
+    - name: carbon
+      port: {{ .Values.otel.ingest.ports.carbon }}
+      targetPort: carbon
+      protocol: TCP
+    - name: otlp-grpc
+      port: {{ .Values.otel.ingest.ports.otlpGrpc }}
+      targetPort: otlp-grpc
+      protocol: TCP
+    - name: otlp-http
+      port: {{ .Values.otel.ingest.ports.otlpHttp }}
+      targetPort: otlp-http
+      protocol: TCP
+    - name: fluentforward
+      port: {{ .Values.otel.ingest.ports.fluentForward }}
+      targetPort: fluentforward
+      protocol: TCP
+    - name: influxdb
+      port: {{ .Values.otel.ingest.ports.influxdb }}
+      targetPort: influxdb
+      protocol: TCP
+    - name: health
+      port: {{ .Values.otel.ingest.ports.health }}
+      targetPort: health
+      protocol: TCP
+    - name: jaeger-grpc
+      port: {{ .Values.otel.ingest.ports.jaegerGrpc }}
+      targetPort: jaeger-grpc
+      protocol: TCP
+    - name: jaeger-thrift-http
+      port: {{ .Values.otel.ingest.ports.jaegerThriftHttp }}
+      targetPort: jaeger-thrift-http
+      protocol: TCP
+    - name: jaeger-thrift-compact
+      port: {{ .Values.otel.ingest.ports.jaegerThriftCompact }}
+      targetPort: jaeger-thrift-compact
+      protocol: UDP
+    - name: jaeger-thrift-binary
+      port: {{ .Values.otel.ingest.ports.jaegerThriftBinary }}
+      targetPort: jaeger-thrift-binary
+      protocol: UDP
+    - name: syslog-tcp
+      port: {{ .Values.otel.ingest.ports.syslog }}
+      targetPort: syslog-tcp
+      protocol: TCP
+    - name: syslog-udp
+      port: {{ .Values.otel.ingest.ports.syslog }}
+      targetPort: syslog-udp
+      protocol: UDP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.otel.ingest.name }}
+  labels:
+    {{- include "otel-stack.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: otel-ingest
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: otel-ingest
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: opentelemetry-collector
+          image: {{ .Values.otel.image.repository }}:{{ .Values.otel.image.tag }}
+          imagePullPolicy: {{ .Values.otel.image.pullPolicy }}
+          args:
+            {{- toYaml .Values.otel.ingest.command | nindent 12 }}
+          env:
+            - name: TZ
+              value: {{ .Values.global.timezone | quote }}
+          ports:
+            - name: carbon
+              containerPort: {{ .Values.otel.ingest.ports.carbon }}
+              protocol: TCP
+            - name: otlp-grpc
+              containerPort: {{ .Values.otel.ingest.ports.otlpGrpc }}
+              protocol: TCP
+            - name: otlp-http
+              containerPort: {{ .Values.otel.ingest.ports.otlpHttp }}
+              protocol: TCP
+            - name: fluentforward
+              containerPort: {{ .Values.otel.ingest.ports.fluentForward }}
+              protocol: TCP
+            - name: influxdb
+              containerPort: {{ .Values.otel.ingest.ports.influxdb }}
+              protocol: TCP
+            - name: health
+              containerPort: {{ .Values.otel.ingest.ports.health }}
+              protocol: TCP
+            - name: jaeger-grpc
+              containerPort: {{ .Values.otel.ingest.ports.jaegerGrpc }}
+              protocol: TCP
+            - name: jaeger-thrift-http
+              containerPort: {{ .Values.otel.ingest.ports.jaegerThriftHttp }}
+              protocol: TCP
+            - name: jaeger-thrift-compact
+              containerPort: {{ .Values.otel.ingest.ports.jaegerThriftCompact }}
+              protocol: UDP
+            - name: jaeger-thrift-binary
+              containerPort: {{ .Values.otel.ingest.ports.jaegerThriftBinary }}
+              protocol: UDP
+            - name: syslog-tcp
+              containerPort: {{ .Values.otel.ingest.ports.syslog }}
+              protocol: TCP
+            - name: syslog-udp
+              containerPort: {{ .Values.otel.ingest.ports.syslog }}
+              protocol: UDP
+          volumeMounts:
+            - name: config
+              mountPath: /etc/otelcol-contrib/config.yaml
+              subPath: config.yaml
+      volumes:
+        - name: config
+          configMap:
+            name: {{ .Values.otel.ingest.name }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.otel.traceProcessor.name }}
+  labels:
+    {{- include "otel-stack.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: trace-processor
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: trace-processor
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: trace-processor
+          image: {{ .Values.otel.image.repository }}:{{ .Values.otel.image.tag }}
+          imagePullPolicy: {{ .Values.otel.image.pullPolicy }}
+          args:
+            - --config=/etc/otelcol-contrib/config.yaml
+          env:
+            - name: TZ
+              value: {{ .Values.global.timezone | quote }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/otelcol-contrib/config.yaml
+              subPath: config.yaml
+      volumes:
+        - name: config
+          configMap:
+            name: {{ .Values.otel.traceProcessor.name }}
+{{- if .Values.otel.exporters.victorialogs.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.otel.exporters.victorialogs.name }}
+  labels:
+    {{- include "otel-stack.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: victorialogs-exporter
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: victorialogs-exporter
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: victorialogs-exporter
+          image: {{ .Values.otel.image.repository }}:{{ .Values.otel.image.tag }}
+          imagePullPolicy: {{ .Values.otel.image.pullPolicy }}
+          args:
+            - --config=/etc/otelcol-contrib/config.yaml
+          env:
+            - name: TZ
+              value: {{ .Values.global.timezone | quote }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/otelcol-contrib/config.yaml
+              subPath: config.yaml
+      volumes:
+        - name: config
+          configMap:
+            name: {{ .Values.otel.exporters.victorialogs.name }}
+{{- end }}
+{{- if .Values.otel.exporters.victoriametrics.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.otel.exporters.victoriametrics.name }}
+  labels:
+    {{- include "otel-stack.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: victoriametrics-exporter
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: victoriametrics-exporter
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: victoriametrics-exporter
+          image: {{ .Values.otel.image.repository }}:{{ .Values.otel.image.tag }}
+          imagePullPolicy: {{ .Values.otel.image.pullPolicy }}
+          args:
+            - --config=/etc/otelcol-contrib/config.yaml
+          env:
+            - name: TZ
+              value: {{ .Values.global.timezone | quote }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/otelcol-contrib/config.yaml
+              subPath: config.yaml
+      volumes:
+        - name: config
+          configMap:
+            name: {{ .Values.otel.exporters.victoriametrics.name }}
+{{- end }}
+{{- if .Values.otel.exporters.victoriatraces.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.otel.exporters.victoriatraces.name }}
+  labels:
+    {{- include "otel-stack.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: victoriatraces-exporter
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: victoriatraces-exporter
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: victoriatraces-exporter
+          image: {{ .Values.otel.image.repository }}:{{ .Values.otel.image.tag }}
+          imagePullPolicy: {{ .Values.otel.image.pullPolicy }}
+          args:
+            - --config=/etc/otelcol-contrib/config.yaml
+          env:
+            - name: TZ
+              value: {{ .Values.global.timezone | quote }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/otelcol-contrib/config.yaml
+              subPath: config.yaml
+      volumes:
+        - name: config
+          configMap:
+            name: {{ .Values.otel.exporters.victoriatraces.name }}
+{{- end }}
+{{- if .Values.otel.exporters.victoriametricsRecovery.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.otel.exporters.victoriametricsRecovery.name }}
+  labels:
+    {{- include "otel-stack.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: victoriametrics-recovery-exporter
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: victoriametrics-recovery-exporter
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: victoriametrics-recovery-exporter
+          image: {{ .Values.otel.image.repository }}:{{ .Values.otel.image.tag }}
+          imagePullPolicy: {{ .Values.otel.image.pullPolicy }}
+          args:
+            - --config=/etc/otelcol-contrib/config.yaml
+          env:
+            - name: TZ
+              value: {{ .Values.global.timezone | quote }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/otelcol-contrib/config.yaml
+              subPath: config.yaml
+      volumes:
+        - name: config
+          configMap:
+            name: {{ .Values.otel.exporters.victoriametricsRecovery.name }}
+{{- end }}
