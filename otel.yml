@@ -27,7 +27,7 @@ services:
         order: start-first
 
   kafka:
-    image: ${DOCKER_PROXY:-}bitnami/kafka:4.0
+    image: ${DOCKER_PROXY:-}soldevelo/kafka:4.0
     stop_grace_period: 300s
     environment:
       TZ: 'Europe/Berlin'
